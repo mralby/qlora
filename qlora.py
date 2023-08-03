@@ -124,6 +124,7 @@ class DataArguments:
         default=None,
         metadata={"help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf]"}
     )
+    use_fast_tokenizer: bool = field(default=False, metadata={'help': 'Whenever to use fast tokenizer. It may cause issues.'})
 
 @dataclass
 class TrainingArguments(transformers.Seq2SeqTrainingArguments):
@@ -348,7 +349,7 @@ def get_accelerate_model(args, checkpoint_dir):
         args.model_name_or_path,
         cache_dir=args.cache_dir,
         padding_side="right",
-        use_fast=False, # Fast tokenizer giving issues.
+        use_fast=args.use_fast_tokenizer, # Fast tokenizer giving issues.
         tokenizer_type='llama' if 'llama' in args.model_name_or_path else None, # Needed for HF name change
         trust_remote_code=args.trust_remote_code,
         use_auth_token=args.use_auth_token,
@@ -362,7 +363,7 @@ def get_accelerate_model(args, checkpoint_dir):
             model=model,
         )
         
-    if 'llama' in args.model_name_or_path or isinstance(tokenizer, LlamaTokenizer):
+    if 'llama' in args.model_name_or_path or 'falcon' in args.model_name_or_path or isinstance(tokenizer, LlamaTokenizer):
         # LLaMA tokenizer may not have correct special tokens set.
         # Check and add them if missing to prevent them from being parsed into different tokens.
         # Note that these are present in the vocabulary.
