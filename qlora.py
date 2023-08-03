@@ -405,6 +405,8 @@ def get_accelerate_model(args, checkpoint_dir):
             if hasattr(module, 'weight'):
                 if args.bf16 and module.weight.dtype == torch.float32:
                     module = module.to(torch.bfloat16)
+    # print special tokens
+    print(f"Special tokens: {tokenizer.additional_special_tokens}")
     return model, tokenizer
 
 def print_trainable_parameters(args, model):
