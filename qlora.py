@@ -31,7 +31,7 @@ from transformers import (
     LlamaTokenizer
 
 )
-from datasets import load_dataset, Dataset
+from datasets import load_dataset, Dataset, load_from_disk
 import evaluate
 
 from peft import (
@@ -600,7 +600,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
             if os.path.exists(dataset_name):
                 try:
                     args.dataset_format = args.dataset_format if args.dataset_format else "input-output"
-                    full_dataset = local_dataset(dataset_name)
+                    full_dataset = load_from_disk(dataset_name)
                     return full_dataset
                 except:
                     raise ValueError(f"Error loading dataset from {dataset_name}")
