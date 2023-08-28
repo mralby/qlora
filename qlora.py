@@ -38,10 +38,13 @@ from peft import (
     prepare_model_for_kbit_training,
     LoraConfig,
     get_peft_model,
-    PeftModel
+    PeftModel,
+    AutoPeftModelForCausalLM
 )
 from peft.tuners.lora import LoraLayer
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
+
+from trl import DPOTrainer
 
 
 def is_ipex_available():
@@ -213,6 +216,7 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     save_strategy: str = field(default='steps', metadata={"help": 'When to save checkpoints'})
     save_steps: int = field(default=250, metadata={"help": 'How often to save a model'})
     save_total_limit: int = field(default=40, metadata={"help": 'How many checkpoints to save before the oldest is overwritten'})
+    rlhf_training: bool = field(default=False, metadata={"help": 'Configure RLHF trainer'})
 
 @dataclass
 class GenerationArguments:
@@ -309,26 +313,39 @@ def get_accelerate_model(args, checkpoint_dir):
 
     print(f'loading base model {args.model_name_or_path}...')
     compute_dtype = (torch.float16 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32))
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model_name_or_path,
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=args.bits == 4,
+        load_in_8bit=args.bits == 8,
+        llm_int8_threshold=6.0,
+        llm_int8_has_fp16_weight=False,
+        bnb_4bit_compute_dtype=compute_dtype,
+        bnb_4bit_use_double_quant=args.double_quant,
+        bnb_4bit_quant_type=args.quant_type,
+    )
+    automodel_config = dict(
         cache_dir=args.cache_dir,
         load_in_4bit=args.bits == 4,
         load_in_8bit=args.bits == 8,
         device_map=device_map,
         max_memory=max_memory,
-        quantization_config=BitsAndBytesConfig(
-            load_in_4bit=args.bits == 4,
-            load_in_8bit=args.bits == 8,
-            llm_int8_threshold=6.0,
-            llm_int8_has_fp16_weight=False,
-            bnb_4bit_compute_dtype=compute_dtype,
-            bnb_4bit_use_double_quant=args.double_quant,
-            bnb_4bit_quant_type=args.quant_type,
-        ),
+        quantization_config=bnb_config,
         torch_dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32)),
         trust_remote_code=args.trust_remote_code,
         use_auth_token=args.use_auth_token
     )
+    
+    def remove_key_and_retrieve(x: dict, key: str):
+        if key in x:
+            x.pop(key)
+        return x
+    
+    model = (AutoModelForCausalLM.from_pretrained(args.model_name_or_path, **automodel_config) if not (args.checkpoint_dir and args.rlhf_training)
+            else AutoPeftModelForCausalLM(args.checkpoint_dir, is_trainable=True, **(remove_key_and_retrieve(automodel_config, 'quantization_config'))))
+    
+    ref_model = None
+    if args.rlhf_training and args.checkpoint_dir:
+        print("Loading ref model for RLHF")
+        ref_model = AutoPeftModelForCausalLM(args.checkpoint_dir, is_trainable=False, **(remove_key_and_retrieve(automodel_config, 'quantization_config')))
     if compute_dtype == torch.float16 and args.bits == 4:
         if torch.cuda.is_bf16_supported():
             print('='*80)
@@ -385,7 +402,7 @@ def get_accelerate_model(args, checkpoint_dir):
     if not args.full_finetune:
         if checkpoint_dir is not None:
             print("Loading adapters from checkpoint.")
-            model = PeftModel.from_pretrained(model, join(checkpoint_dir, 'adapter_model'), is_trainable=True)
+            model = PeftModel.from_pretrained(join(checkpoint_dir, 'adapter_model'), is_trainable=True)
         else:
             print(f'adding LoRA modules...')
             modules = find_all_linear_names(args, model)
@@ -411,7 +428,7 @@ def get_accelerate_model(args, checkpoint_dir):
                     module = module.to(torch.bfloat16)
     # print special tokens
     print(f"Special tokens: {tokenizer.additional_special_tokens}")
-    return model, tokenizer
+    return model, ref_model, tokenizer
 
 def print_trainable_parameters(args, model):
     """
@@ -709,7 +726,7 @@ def train():
     if completed_training:
         print('Detected that training was already completed!')
 
-    model, tokenizer = get_accelerate_model(args, checkpoint_dir)
+    model, ref_model, tokenizer = get_accelerate_model(args, checkpoint_dir)
 
     model.config.use_cache = False
     print('loaded model')
@@ -717,11 +734,19 @@ def train():
 
     data_module = make_data_module(tokenizer=tokenizer, args=args)
     
-    trainer = Seq2SeqTrainer(
+    trainer = (Seq2SeqTrainer(
         model=model,
         tokenizer=tokenizer,
         args=training_args,
         **{k:v for k,v in data_module.items() if k != 'predict_dataset'},
+    ) if not training_args.rlhf_training 
+      else DPOTrainer(
+          model=model,
+          ref_model=ref_model,
+          tokenizer=tokenizer,
+          args=training_args,
+          **{k:v for k,v in data_module.items() if k != 'predict_dataset'}
+      )
     )
 
     # Callbacks
