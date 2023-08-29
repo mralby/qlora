@@ -339,13 +339,13 @@ def get_accelerate_model(args, checkpoint_dir):
             x.pop(key)
         return x
     
-    model = (AutoModelForCausalLM.from_pretrained(args.model_name_or_path, **automodel_config) if not (args.checkpoint_dir and args.rlhf_training)
-            else AutoPeftModelForCausalLM(args.checkpoint_dir, is_trainable=True, **(remove_key_and_retrieve(automodel_config, 'quantization_config'))))
+    model = (AutoModelForCausalLM.from_pretrained(args.model_name_or_path, **automodel_config) if not (checkpoint_dir and args.rlhf_training)
+            else AutoPeftModelForCausalLM(checkpoint_dir, is_trainable=True, **(remove_key_and_retrieve(automodel_config, 'quantization_config'))))
     
     ref_model = None
-    if args.rlhf_training and args.checkpoint_dir:
+    if args.rlhf_training and checkpoint_dir:
         print("Loading ref model for RLHF")
-        ref_model = AutoPeftModelForCausalLM(args.checkpoint_dir, is_trainable=False, **(remove_key_and_retrieve(automodel_config, 'quantization_config')))
+        ref_model = AutoPeftModelForCausalLM(checkpoint_dir, is_trainable=False, **(remove_key_and_retrieve(automodel_config, 'quantization_config')))
     if compute_dtype == torch.float16 and args.bits == 4:
         if torch.cuda.is_bf16_supported():
             print('='*80)
