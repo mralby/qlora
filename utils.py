@@ -81,7 +81,7 @@ def my_dequantize_model(model, tokenizer, to='./dequantized_model', dtype=torch.
                 if module.bias is None:
 #                    module.disable_adapters = True   # so peft.tuners.lora.Linear4bit.foward is the same as bnb.nn.Linear4bit
                     device = module.weight.device
-                    module = bnb.dequantize_4bit(module.weight.data, quant_state=module.weight.quant_state).to(device)
+                    module = bnb.dequantize_4bit(module.weight.data, quant_state=module.weight.quant_state, quant_type='nf4').to(device)
                 else:
                     # TODO: handle when bias is not None
                     raise NotImplementedError
