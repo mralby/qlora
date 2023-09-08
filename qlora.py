@@ -91,6 +91,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Enables using Huggingface auth token from Git Credentials."}
     )
+    adapter_path: str = field(
+        defualt=None,
+        metadata={"help": "Load adapters with AutoPeftModelForCausalLM instead of loading the entire model with AutoModelForCausalLM."}
+    )
 
 @dataclass
 class DataArguments:
@@ -339,8 +343,13 @@ def get_accelerate_model(args, checkpoint_dir):
             x.pop(key)
         return x
     
-    print('Loading model')
-    model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, **automodel_config)
+    model = None
+    if args.adapter_path:
+        print('Loading PEFT model')
+        model = AutoPeftModelForCausalLM(args.adapter_path, is_trainable=True, **automodel_config)#**(remove_key_and_retrieve(automodel_config, 'quantization_config')))
+    else:
+        print('Loading model')
+        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, **automodel_config)
     
     ref_model = None
     if args.rlhf_training and checkpoint_dir:
