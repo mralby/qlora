@@ -339,13 +339,8 @@ def get_accelerate_model(args, checkpoint_dir):
             x.pop(key)
         return x
     
-    model = None
-    if not (checkpoint_dir and args.rlhf_training):
-        print('Loading model')
-        model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, **automodel_config)
-    else:
-        print('Loading PEFT model')
-        model = AutoPeftModelForCausalLM(checkpoint_dir, is_trainable=True, **(remove_key_and_retrieve(automodel_config, 'quantization_config')))
+    print('Loading model')
+    model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, **automodel_config)
     
     ref_model = None
     if args.rlhf_training and checkpoint_dir:
