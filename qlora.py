@@ -132,6 +132,8 @@ class DataArguments:
         metadata={"help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf]"}
     )
     use_fast_tokenizer: bool = field(default=False, metadata={'help': 'Whenever to use fast tokenizer. It may cause issues.'})
+    use_bos_token: bool = field(default=True, metadata={'help': 'Whenever to include begin-of-sequence token on inputs.'})
+    use_eos_token: bool = field(default=True, metadata={'help': 'Whenever to include end-of-sequence token on inputs.'}))
 
 @dataclass
 class TrainingArguments(transformers.Seq2SeqTrainingArguments):
@@ -338,16 +340,11 @@ def get_accelerate_model(args, checkpoint_dir):
         use_auth_token=args.use_auth_token
     )
     
-    def remove_key_and_retrieve(x: dict, key: str):
-        if key in x:
-            x.pop(key)
-        return x
-    
     model = None
     if args.adapter_path:
         print('Loading PEFT model. Adapters: '+args.adapter_path)
         print(f'Parameters: {automodel_config}')
-        model = AutoPeftModelForCausalLM.from_pretrained(args.adapter_path, adapter_name='default',is_trainable=True, **automodel_config)#**(remove_key_and_retrieve(automodel_config, 'quantization_config')))
+        model = AutoPeftModelForCausalLM.from_pretrained(args.adapter_path, adapter_name='default',is_trainable=True, **automodel_config)
     else:
         print('Loading model')
         model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, **automodel_config)
@@ -355,7 +352,7 @@ def get_accelerate_model(args, checkpoint_dir):
     ref_model = None
     if args.rlhf_training and checkpoint_dir:
         print("Loading ref model for RLHF")
-        ref_model = AutoPeftModelForCausalLM(checkpoint_dir, is_trainable=False, **(remove_key_and_retrieve(automodel_config, 'quantization_config')))
+        ref_model = AutoPeftModelForCausalLM(checkpoint_dir, is_trainable=False, **automodel_config)
     if compute_dtype == torch.float16 and args.bits == 4:
         if torch.cuda.is_bf16_supported():
             print('='*80)
@@ -486,11 +483,14 @@ class DataCollatorForCausalLM(object):
     target_max_len: int
     train_on_source: bool
     predict_with_generate: bool
+    use_eos_token: bool
+    use_bos_token: bool
+    
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
         # Extract elements
-        sources = [f"{self.tokenizer.bos_token}{example['input']}" for example in instances]
-        targets = [f"{example['output']}{self.tokenizer.eos_token}" for example in instances]
+        sources = [f"{self.tokenizer.bos_token if self.use_bos_token else ''}{example['input']}" for example in instances]
+        targets = [f"{example['output']}{self.tokenizer.eos_token if self.use_eos_token else ''}" for example in instances]
         # Tokenize
         tokenized_sources_with_prompt = self.tokenizer(
             sources,
