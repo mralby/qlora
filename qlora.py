@@ -698,6 +698,8 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         target_max_len=args.target_max_len,
         train_on_source=args.train_on_source,
         predict_with_generate=args.predict_with_generate,
+        use_eos_token=args.use_eos_token,
+        use_bos_token=args.use_bos_token
     )
     return dict(
         train_dataset=train_dataset if args.do_train else None,
