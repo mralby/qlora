@@ -133,7 +133,7 @@ class DataArguments:
     )
     use_fast_tokenizer: bool = field(default=False, metadata={'help': 'Whenever to use fast tokenizer. It may cause issues.'})
     use_bos_token: bool = field(default=True, metadata={'help': 'Whenever to include begin-of-sequence token on inputs.'})
-    use_eos_token: bool = field(default=True, metadata={'help': 'Whenever to include end-of-sequence token on inputs.'}))
+    use_eos_token: bool = field(default=True, metadata={'help': 'Whenever to include end-of-sequence token on inputs.'})
 
 @dataclass
 class TrainingArguments(transformers.Seq2SeqTrainingArguments):
