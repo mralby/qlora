@@ -393,6 +393,7 @@ def get_accelerate_model(args, checkpoint_dir):
                 tokenizer=tokenizer,
                 model=model,
             )
+            print(f'Pad token null. New pad token should be: {tokenizer.encode(DEFAULT_PAD_TOKEN)} -> {tokenizer.pad_token_id}')
         
     if 'llama' in args.model_name_or_path or isinstance(tokenizer, LlamaTokenizer):
         # LLaMA tokenizer may not have correct special tokens set.
@@ -400,6 +401,7 @@ def get_accelerate_model(args, checkpoint_dir):
         # Note that these are present in the vocabulary.
         # Note also that `model.config.pad_token_id` is 0 which corresponds to `<unk>` token.
         print('Adding special tokens.')
+        print(f'Pad token(model):{model.config.pad_token_id} (tokenizer): {tokenizer.pad_token_id}')
         tokenizer.add_special_tokens({
                 "eos_token": tokenizer.convert_ids_to_tokens(model.config.eos_token_id),
                 "bos_token": tokenizer.convert_ids_to_tokens(model.config.bos_token_id),
