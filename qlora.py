@@ -95,6 +95,10 @@ class ModelArguments:
         default=None,
         metadata={"help": "Load adapters with AutoPeftModelForCausalLM instead of loading the entire model with AutoModelForCausalLM."}
     )
+    use_flash_attention_2: Optional[bool] = field(
+        default=False,
+        metadata={'help': 'Prepare the model for flash attention-2'}
+    )
 
 @dataclass
 class DataArguments:
@@ -337,7 +341,8 @@ def get_accelerate_model(args, checkpoint_dir):
         quantization_config=bnb_config,
         torch_dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32)),
         trust_remote_code=args.trust_remote_code,
-        use_auth_token=args.use_auth_token
+        use_auth_token=args.use_auth_token,
+        use_flash_attention_2 = args.use_flash_attention_2
     )
     
     model = None
