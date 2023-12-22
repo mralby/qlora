@@ -227,6 +227,10 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     save_steps: int = field(default=250, metadata={"help": 'How often to save a model'})
     save_total_limit: int = field(default=40, metadata={"help": 'How many checkpoints to save before the oldest is overwritten'})
     rlhf_training: bool = field(default=False, metadata={"help": 'Configure RLHF trainer'})
+    neftune_noise_alpha: Optional[float] = field(
+        default = None,
+        metadata={'help': 'Configre NEFTune parameter for noisy training'}
+    )
 
 @dataclass
 class GenerationArguments:
@@ -393,7 +397,7 @@ def get_accelerate_model(args, checkpoint_dir):
                 tokenizer=tokenizer,
                 model=model,
             )
-            print(f'Pad token null. New pad token should be: {tokenizer.encode(DEFAULT_PAD_TOKEN)} -> {tokenizer.pad_token_id}')
+            print(f'Pad token null. New pad token should be: {tokenizer.encode(DEFAULT_PAD_TOKEN)} -> {tokenizer.pad_token_id} (tokenizer); {tokenizer.pad_token_id} (model)')
         
     if 'llama' in args.model_name_or_path or isinstance(tokenizer, LlamaTokenizer):
         # LLaMA tokenizer may not have correct special tokens set.
@@ -401,13 +405,17 @@ def get_accelerate_model(args, checkpoint_dir):
         # Note that these are present in the vocabulary.
         # Note also that `model.config.pad_token_id` is 0 which corresponds to `<unk>` token.
         print('Adding special tokens.')
-        print(f'Pad token(model):{model.config.pad_token_id} (tokenizer): {tokenizer.pad_token_id}')
+        pad_tok_id = model.config.pad_token_id if model.config.pad_token_id != -1 else tokenizer.pad_token_id
+        pad_tok = tokenizer._pad_token
+        print(f'Pad token id (model):{pad_tok_id} (tokenizer): {pad_tok_id}; Pad token(tokenizer): {pad_tok}')
+        print(f'eos_token:convert_ids_to_tokens({model.config.eos_token_id})')
+        print(f'bos_token:convert_ids_to_tokens({model.config.bos_token_id})')
+        print(f'unk_token:convert_ids_to_tokens({pad_tok_id})')
         tokenizer.add_special_tokens({
                 "eos_token": tokenizer.convert_ids_to_tokens(model.config.eos_token_id),
                 "bos_token": tokenizer.convert_ids_to_tokens(model.config.bos_token_id),
-                "unk_token": tokenizer.convert_ids_to_tokens(
-                    model.config.pad_token_id if model.config.pad_token_id != -1 else tokenizer.pad_token_id
-                ),
+                "unk_token": pad_tok,
+                
         })
     
     if not args.full_finetune:
@@ -472,7 +480,8 @@ def smart_tokenizer_and_embedding_resize(
     """
     num_new_tokens = tokenizer.add_special_tokens(special_tokens_dict)
     model.resize_token_embeddings(len(tokenizer))
-    
+    print(f"Num new tokens: {num_new_tokens}; special tokens dict: {special_tokens_dict}")
+    print(f"tokenizer._pad_token = {tokenizer._pad_token}")
     if num_new_tokens > 0:
         input_embeddings_data = model.get_input_embeddings().weight.data
         output_embeddings_data = model.get_output_embeddings().weight.data
@@ -482,6 +491,8 @@ def smart_tokenizer_and_embedding_resize(
 
         input_embeddings_data[-num_new_tokens:] = input_embeddings_avg
         output_embeddings_data[-num_new_tokens:] = output_embeddings_avg
+    else:
+        print(f"Tokenizer not updated")
 
 @dataclass
 class DataCollatorForCausalLM(object):
